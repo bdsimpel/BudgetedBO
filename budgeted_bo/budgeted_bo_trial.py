@@ -37,6 +37,22 @@ def budgeted_bo_trial(
     n_max_iter: int = 200,
     ignore_failures: bool = False,
 ) -> None:
+    r"""Budgeted Bayesian optimization trial.
+        Args:
+            problem: Name of the problem.
+            algo: Name of the algorithm.
+            algo_params: Algorithm parameters.
+            trial: Trial number.
+            restart: Whether to restart the trial.
+            objective_function: Objective function.
+            cost_function: Cost function.
+            objective_cost_function: Objective and cost function.
+            input_dim: Input dimension.
+            n_init_evals: Number of initial evaluations.
+            budget: Budget.
+            n_max_iter: Maximum number of iterations.
+            ignore_failures: Whether to ignore failures.
+    """
     # Make sure that objective and cost functions are passed
     if (objective_cost_function is None) and (objective_function is None or cost_function is None):
         raise RuntimeError(
@@ -139,28 +155,32 @@ def budgeted_bo_trial(
         # New suggested point
         t0 = time.time()
 
-        try:
-            new_x = get_new_suggested_point(
-                algo=algo,
-                X=X,
-                objective_X=objective_X,
-                cost_X=cost_X,
-                budget_left=budget_plus_init_cost - cumulative_cost,
-                algo_params=algo_params,
-            )
+        #try:
+        new_x = get_new_suggested_point(
+            algo=algo,
+            X=X,
+            objective_X=objective_X,
+            cost_X=cost_X,
+            budget_left=budget_plus_init_cost - cumulative_cost,
+            algo_params=algo_params,
+        )
+        """
         except:
             if ignore_failures:
                 print("An error ocurred when computing the next point to evaluate. Instead, a point will be chosen uniformly at random.")
                 new_x = get_new_suggested_point(
-                algo="Random",
-                X=X,
-                objective_X=objective_X,
-                cost_X=cost_X,
-                budget_left=budget_plus_init_cost - cumulative_cost,
-                algo_params=algo_params,
-            )
-            else:
-                raise Error("An error ocurred when computing the next point to evaluate.")
+                    algo="Random",
+                    X=X,
+                    objective_X=objective_X,
+                    cost_X=cost_X,
+                    budget_left=budget_plus_init_cost - cumulative_cost,
+                    algo_params=algo_params,
+                )
+        else:
+            raise Error("An error ocurred when computing the next point to evaluate.")
+        """
+        
+        
 
 
         t1 = time.time()

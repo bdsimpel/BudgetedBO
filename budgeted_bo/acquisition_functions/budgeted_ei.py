@@ -62,7 +62,7 @@ class BudgetedExpectedImprovement(AnalyticAcquisitionFunction):
             A `(b)`-dim Tensor of Expected Improvement values at the given
             design points `X`.
         """
-        posterior = self._get_posterior(X=X)
+        posterior = self.model.posterior(X=X)
         means = posterior.mean  # (b) x 2
         sigmas = posterior.variance.sqrt().clamp_min(1e-6)  # (b) x 2
 

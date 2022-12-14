@@ -51,7 +51,7 @@ class ExpectedImprovementPerUnitOfCost(AnalyticAcquisitionFunction):
             A `b1 x ... bk`-dim tensor of Expected Improvement Per Unit of Cost values
             at the given design points `X`.
         """
-        posterior = self._get_posterior(X=X)
+        posterior = self.model.posterior(X)
         means = posterior.mean  # (b) x 2
         vars = posterior.variance.clamp_min(1e-6)  # (b) x 2
         stds = vars.sqrt()

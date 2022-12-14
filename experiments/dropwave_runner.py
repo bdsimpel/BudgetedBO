@@ -39,7 +39,7 @@ def get_objective_cost_function(seed: int) -> Callable:
 
 
 # Algos
-algo = "EI-PUC-CC"
+algo = "B-MS-EI"
 if algo == "B-MS-EI":
     algo_params = {"lookahead_n_fantasies": [1, 1, 1], "refill_until_lower_bound_is_reached": True}
 else:

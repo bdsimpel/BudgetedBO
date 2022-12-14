@@ -13,11 +13,12 @@ torch.set_default_dtype(torch.float64)
 debug._set_state(True)
 
 script_dir = os.path.dirname(os.path.realpath(sys.argv[0]))
-sys.path.append(script_dir[:-11] + "budgeted_bo")
-sys.path.append(script_dir[:-11] + "budgeted_bo/acquisition_functions")
+sys.path.append(script_dir[:-12])
+#sys.path.append(script_dir[:-11] + "budgeted_bo")
+#sys.path.append(script_dir[:-11] + "budgeted_bo/acquisition_functions")
 
-from experiment_manager import experiment_manager
-from utils import fit_model
+from budgeted_bo.experiment_manager import experiment_manager
+from budgeted_bo.utils import fit_model
 
 
 # Objective and cost functions

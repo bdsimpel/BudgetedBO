@@ -35,6 +35,15 @@ def evaluate_obj_and_cost_at_X(
     cost_function: Optional[Callable],
     objective_cost_function: Optional[Callable],
 )-> Tensor:
+    r"""Evaluate the objective and cost functions at the given points.
+        Args:
+            X: input points
+            objective_function: objective function
+            cost_function: cost function
+            objective_cost_function: objective-cost function
+        Returns:
+            tuple of objecive and cost values
+    """
     if (objective_cost_function is None) and (objective_function is None or cost_function is None):
         raise RuntimeError(
             "Both the objective and cost functions must be passed as inputs.")
@@ -79,7 +88,7 @@ def fantasize_costs(
                 best_f=best_f,
                 cost_exponent=cost_exponent,
             )
-
+            # VALUE: evaluating stage-values
             # Get new point
             new_x, acq_value = optimize_acqf(
                 acq_function=aux_acq_func,
@@ -98,13 +107,21 @@ def fantasize_costs(
 
             fantasy_optimizers.append(new_x.clone())
 
+            # CORRELATE: sampling from the posterior
             # Fantasize objective and cost values
             sampler = IIDNormalSampler(
                 num_samples=1, resample=True, collapse_batch_dims=True
             )
+            # calculate function value of new point
             posterior_new_x = model.posterior(new_x, observation_noise=True)
             fantasy_obs = sampler(posterior_new_x).squeeze(dim=0).detach()
+            # fantasy_obs[0,1] is the cost value
             fantasy_costs.append(torch.exp(fantasy_obs[0,1]).item())
+            """
+            BotorchTensorDimensionWarning: Non-strict enforcement of botorch tensor conventions. Ensure that target tensors Y has an explicit output dimension.
+            """
+            # FANTASIZE: conditioning
+            # condition on observed fantasy cost
             model = model.condition_on_observations(X=new_x, Y=fantasy_obs)
 
             # Update remaining budget
@@ -123,6 +140,15 @@ def fit_model(
     training_mode: str,
     noiseless_obs: bool = False,
 ):
+    r"""Fit a GP model to the given data.
+        Args:
+            X: input points
+            objective_X: objective values
+            cost_X: cost values
+            training_mode: training mode {objective, cost, objective_and_cost}
+            noiseless_obs: whether to use noiseless observations
+        Returns:
+            fitted model"""
     if training_mode == "objective":
         Y = objective_X
     elif training_mode == "cost":
@@ -167,13 +193,24 @@ def fit_model(
 
     model.outcome_transform.eval()
     mll = ExactMarginalLogLikelihood(model.likelihood, model)
+    """
+    Failed to independently fit submodels with exception: Error(s) in loading state_dict for SingleTaskGP:
+        Missing key(s) in state_dict: "likelihood.noise_covar.noise_prior.concentration", "likelihood.noise_covar.noise_prior.rate". . Deferring to generic dispatch...
+    """
     fit_gpytorch_model(mll)
 
     return model
 
 
 def generate_initial_design(num_samples: int, input_dim: int, sobol: bool=True, seed: int=None):
-    # generate training data
+    r"""Generate initial design/training data.
+        Args:
+            num_samples: number of samples / n_init_evals
+            input_dim: input dimension
+            sobol: whether to use Sobol sequence
+            seed: random seed = trial number
+        Returns:
+            training data"""
     if sobol:
         soboleng = torch.quasirandom.SobolEngine(dimension=input_dim, scramble=True, seed=seed)
         X = soboleng.draw(num_samples).to(dtype=torch.double)
@@ -201,10 +238,28 @@ def get_suggested_budget(
     previous_budget: Optional[float] = None,
     lower_bound: Optional[float] = None,
 ):
-    """
-    Computes the suggested budget to be used by the budgeted multi-step
+    r""" Computes the suggested budget to be used by the budgeted multi-step
     expected improvement acquisition function.
+    Args:
+        strategy: strategy to use for computing the suggested budget
+        refill_until_lower_bound_is_reached: whether to refill the budget until
+            the lower bound is reached
+        budget_left: remaining budget
+        model: model
+        n_lookahead_steps: number of lookahead steps
+        X: input points
+        objective_X: objective values
+        cost_X: cost values
+        init_budget: initial budget
+        previous_budget: previous budget
+        lower_bound: lower bound
+    Returns:
+        suggested budget
     """
+    # If the difference in suggested budget and effective cost of last sample
+    # was higher than the lower bound (the lowest fantasy cost),
+    # means thate we overestimated the budget in the previous iteration.
+    # In this case, we subtract the previous budget with the cost of the last sample.
     if (
         refill_until_lower_bound_is_reached
         and (lower_bound is not None)
@@ -212,9 +267,9 @@ def get_suggested_budget(
     ):
         suggested_budget = previous_budget - cost_X[-1].item()
         return suggested_budget, lower_bound
-
+    # In case we made a good guess of the budget in the previous iteration,
+    # we fantasize again and use the sum of the fantasy costs as the suggested budget.
     if strategy == "fantasy_costs_from_aux_policy":
-
         # Fantasize the observed costs following the auxiliary acquisition function
         fantasy_costs, fantasy_optimizers = fantasize_costs(
             algo="EI-PUC_CC",
@@ -224,11 +279,12 @@ def get_suggested_budget(
             init_budget=init_budget,
             input_dim=X.shape[-1],
         )
-
         # Suggested budget is the minimum between the sum of the fantasy costs
         # and the true remaining budget.
         suggested_budget = fantasy_costs.sum().item()
         lower_bound = fantasy_costs.min().item()
+    # adaptation of suggested budget if there is less budget left
+    # than the sum of the fantasy costs
     suggested_budget = min(suggested_budget, budget_left)
     return suggested_budget, lower_bound
 
@@ -239,10 +295,18 @@ def optimize_acqf_and_get_suggested_point(
     batch_size: int,
     algo_params: Dict,
 ) -> Tensor:
-    """Optimizes the acquisition function, and returns the candidate solution."""
+    r"""Optimizes the acquisition function, and returns the candidate solution.
+        Args:
+            acq_func: acquisition function
+            bounds: bounds for optimization
+            batch_size: batch size
+            algo_params: algorithm parameters
+        Returns:
+            suggested point"""
     is_ms = isinstance(acq_func, qMultiStepLookahead)
     input_dim = bounds.shape[1]
     q = acq_func.get_augmented_q_batch_size(batch_size) if is_ms else batch_size
+    assert(q >= batch_size)
     raw_samples = 200 * input_dim * batch_size
     num_restarts =  10 * input_dim * batch_size
 
@@ -261,8 +325,27 @@ def optimize_acqf_and_get_suggested_point(
         )
     else:
         batch_initial_conditions = None
-
-    candidates, acq_values = optimize_acqf(
+    # if multi-step, use the custom multistep optimizer
+    if is_ms:
+        candidates, acq_values = optimize_acqf(
+                acq_function=acq_func,
+                bounds=bounds,
+                q=q,
+                num_restarts=num_restarts,
+                raw_samples=raw_samples,
+                options={
+                    "batch_limit": 2,
+                    "maxiter": 200,
+                    "nonnegative": True,
+                    "method": "L-BFGS-B",
+                },
+                batch_initial_conditions=batch_initial_conditions,
+                return_best_only=False,
+                return_full_tree=is_ms,
+            )
+    # no return_full_tree for non-multi-step
+    else:
+        candidates, acq_values = optimize_acqf(
             acq_function=acq_func,
             bounds=bounds,
             q=q,
@@ -276,13 +359,15 @@ def optimize_acqf_and_get_suggested_point(
             },
             batch_initial_conditions=batch_initial_conditions,
             return_best_only=False,
-            return_full_tree=is_ms,
         )
-
+    # ------------- Dimensions -------------
+    # candidates (num_restarts, q, input_dim)
+    # acq_values (num_restarts)
     candidates =  candidates.detach()
     if is_ms:
         # save all tree variables for multi-step initialization
         algo_params["suggested_x_full_tree"] = candidates.clone()
+        # candidates (num_restarts, q, input_dim) -> (num_restarts, batch_size, input_dim)
         candidates = acq_func.extract_candidates(candidates)
 
     acq_values_sorted, indices = torch.sort(acq_values.squeeze(), descending=True)

@@ -10,6 +10,7 @@ from botorch.acquisition.multi_step_lookahead import qMultiStepLookahead
 from botorch.models.model import Model
 from botorch.sampling.samplers import MCSampler, SobolQMCNormalSampler
 from torch import Tensor
+from samplers import PosteriorMeanSampler
 
 
 class MultiStepLookaheadEI(qMultiStepLookahead):
